@@ -2,3 +2,8 @@
 *.swp
 *.swo
 *~
+
+# Local skill install artifacts
+.agents/
+.claude/
+skills-lock.json
