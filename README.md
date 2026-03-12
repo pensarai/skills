@@ -37,7 +37,7 @@ Or install directly into a project's `.cursor/skills/`, `.claude/skills/`, or `.
 
 ## Creating a New Skill
 
-Use the template in [`template/`](template/) as a starting point. A skill only requires a folder with a `SKILL.md` file containing YAML frontmatter and instructions:
+Use the template in [`template/SKILL.template.md`](template/SKILL.template.md) as a starting point. Copy it into a new folder under `skills/` and rename it to `SKILL.md`. A skill only requires a folder with a `SKILL.md` file containing YAML frontmatter and instructions:
 
 ```yaml
 ---
