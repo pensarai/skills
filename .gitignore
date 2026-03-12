@@ -3,7 +3,8 @@
 *.swo
 *~
 
-# Local skill install artifacts
+# Local skill install artifacts (created by `npx skills add`)
 .agents/
 .claude/
+.cursor/
 skills-lock.json
