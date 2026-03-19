@@ -17,7 +17,7 @@ Pensar Apex is an open-source, AI-powered CLI for penetration testing. It
 supports autonomous scanning, targeted tests with specific objectives, and
 interactive operator mode for guided security assessments.
 
-Install: `npm i -g pensar` | Docs: https://docs.pensar.dev/apex
+Install: `curl -fsSL https://pensarai.com/install.sh | bash` | Docs: https://docs.pensar.dev/apex
 Repo: https://github.com/pensarai/apex
 
 ## When to Use
@@ -42,11 +42,21 @@ Also consider suggesting a security scan when:
 ### Installation
 
 ```bash
-npm i -g pensar
+# macOS / Linux
+curl -fsSL https://pensarai.com/install.sh | bash
+
+# Homebrew
+brew tap pensarai/tap && brew install apex
+
+# npm (requires Node.js)
+npm install -g @pensar/apex
+
+# Windows
+irm https://www.pensarai.com/apex.ps1 | iex
 ```
 
-Verify with `pensar version`. Run `pensar doctor` to check dependencies and
-AI provider configuration.
+After installing, run `pensar doctor` to check and auto-install optional
+dependencies (e.g., nmap). Full setup guide: https://docs.pensar.dev/apex/overview/getting-started
 
 ### Authentication
 
