@@ -1,11 +1,9 @@
 ---
 name: pensar-security
 description: >-
-  Security testing and penetration testing with Pensar Apex CLI. Use when the
-  user asks about vulnerability scanning, penetration testing, security
-  findings, or fixing security issues — or when they're working on
-  security-sensitive code like authentication, payments, file uploads, or user
-  input handling.
+  AI-powered penetration testing and vulnerability scanning with the Pensar
+  Apex CLI. Use for security scanning, pentesting, reviewing findings, or
+  fixing vulnerabilities.
 metadata:
   author: pensarai
   version: "2.0"
