@@ -14,7 +14,7 @@ This repository contains skills built by [Pensar](https://pensar.dev) for use wi
 
 | Skill | Description |
 |-------|-------------|
-| [pensar-security](skills/pensar-security/) | Security testing and penetration testing with the Pensar Apex CLI — autonomous scanning, targeted tests, interactive operator mode, and Console API management |
+| [pensar-security](skills/pensar-security/) | Security testing and penetration testing with the Pensar Apex CLI — autonomous scanning, targeted tests, operator mode, attack-surface management (apps & endpoints), and Console workspace operations |
 | [dockerize-app](skills/dockerize-app/) | Dockerize an application with docker-compose, including all services, databases, data seeding, and AGENTS.md documentation |
 | [repository-threat-model](skills/repository-threat-model/) | Analyze a repository's architecture and codebase to produce a STRIDE-based threat model in `.pensar/THREAT_MODEL.md` |
 
