@@ -1,22 +1,36 @@
 ---
 name: pensar-security
 description: >-
-  AI-powered penetration testing and vulnerability scanning with the Pensar
-  Apex CLI. Use for security scanning, pentesting, reviewing findings, or
-  fixing vulnerabilities.
+  AI-powered penetration testing, vulnerability scanning, and attack-surface
+  management with the Pensar Apex CLI. Use for security scanning, pentesting,
+  reviewing findings, applying fixes, or managing the workspace attack surface
+  (apps & endpoints), pentests, and issues from the Console.
 metadata:
   author: pensarai
-  version: "2.0"
+  version: "3.0"
 ---
 
 # Security Testing with Pensar
 
 Pensar Apex is an open-source, AI-powered CLI for penetration testing. It
-supports autonomous scanning, targeted tests with specific objectives, and
-interactive operator mode for guided security assessments.
+supports autonomous scanning, targeted tests with specific objectives, an
+interactive operator mode, and full management of the workspace **attack
+surface** (apps & endpoints), pentests, issues, fixes, and agent logs through
+the Pensar Console API.
 
 Install: `curl -fsSL https://pensarai.com/install.sh | bash` | Docs: https://docs.pensar.dev/apex
 Repo: https://github.com/pensarai/apex
+
+The CLI splits into two kinds of operations:
+
+- **Local engagements** run on this machine and stream results to the terminal:
+  `pensar pentest`, `pensar targeted-pentest`, `pensar threat-model`, and the
+  operator (`pensar -p <prompt>` or the interactive TUI).
+- **Console / workspace operations** act on the workspace you logged into with
+  `pensar login`. They print JSON to stdout — ideal for an agent to parse and
+  chain: `pensar apps`, `pensar pentests`, `pensar issues`, `pensar fixes`,
+  `pensar logs`. There is no `projectId` argument — everything is scoped to the
+  selected workspace.
 
 ## When to Use
 
@@ -27,13 +41,16 @@ Activate when the user:
 - Wants to see or apply fix recommendations
 - Mentions CVSS scores or severity ratings
 - Asks to check the status of a security scan
+- Wants to view, create, update, or audit the **attack surface** — the apps and
+  endpoints Pensar knows about in their workspace
+- Wants to dispatch a Console scan, triage issues, or inspect agent logs
 
 Also consider suggesting a security scan when:
 - The user just wrote or modified authentication code
 - The user is working on payment processing, file uploads, or user input handling
 - The user is about to deploy or merge to production
 - The user asks "is this secure?" about code they're writing
-- New API endpoints or routes were added
+- New API endpoints or routes were added (these likely belong on the attack surface)
 
 ## Setup
 
@@ -58,37 +75,127 @@ dependencies (e.g., nmap). Full setup guide: https://docs.pensar.dev/apex/overvi
 
 ### Authentication
 
-**Option A — Pensar Console (managed inference):**
+**Option A — Pensar Console (managed inference + workspace operations):**
 ```bash
-pensar auth login
+pensar login            # device-flow browser auth; select a workspace
+pensar login status     # show connection + active workspace
+pensar login logout     # disconnect
 ```
-Opens a browser for device authorization. Tokens are stored locally. Check
-status with `pensar auth status`.
+`pensar login` is required before any Console/workspace operation (`apps`,
+`pentests`, `issues`, `fixes`, `logs`). The legacy `pensar auth ...` alias still
+works (`pensar auth login`, `pensar auth status`, `pensar auth logout`).
 
-**Option B — Bring your own API key:**
-Set `ANTHROPIC_API_KEY` (or another provider's key) as an environment variable.
-Config is stored in `~/.pensar/config.json`.
+**Option B — Bring your own API key (local engagements only):**
+Set `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, or
+`PENSAR_API_KEY`) as an environment variable. Config is stored in
+`~/.pensar/config.json`. This powers local pentests/operator but does not give
+access to workspace Console data (use `pensar login` for that).
 
 ---
 
 ## Workflows
 
-### Scan a Project for Vulnerabilities
+### Manage the Attack Surface (apps & endpoints)
+
+A primary workspace use case: drive `pensar apps` to inventory and curate the
+attack surface — the **apps** (applications/services) and the **endpoints** that
+belong to them. All output is JSON, so chain commands by extracting IDs.
+Requires `pensar login` first.
+
+```bash
+# List apps in the workspace (paginated JSON: { apps, hasMore, limit, offset })
+pensar apps
+pensar apps --limit 200 --offset 200      # page through; stop when hasMore=false
+
+# Inspect a single app (full detail)
+pensar apps get <appId>
+
+# Create an app (--name and --description required)
+pensar apps create \
+  --name "Billing API" \
+  --description "Customer billing service" \
+  --type api-service \
+  --framework "Express"
+
+# Update an app (only the flags you pass change)
+pensar apps update <appId> --description "Internal billing service"
+
+# Delete an app
+pensar apps delete <appId>
+```
+
+Work with the endpoints under an app:
+
+```bash
+# List endpoints for an app (lean shape; paginated)
+pensar apps endpoints <appId>
+pensar apps endpoints <appId> --type api-endpoint --min-risk 7   # filter
+
+# Full detail for one endpoint (objectives, auth, risk breakdown, threat model)
+pensar apps endpoint <endpointId>
+
+# Create an endpoint (--endpoint and --description required)
+pensar apps endpoint-create <appId> \
+  --endpoint "/api/invoices/:id" \
+  --description "Fetch an invoice" \
+  --type api-endpoint \
+  --auth-required \
+  --objective "Test for IDOR on invoice id" \
+  --objective "Check auth bypass"
+
+# Update / delete an endpoint
+pensar apps endpoint-update <endpointId> --business-logic "Tenant-scoped"
+pensar apps endpoint-delete <endpointId>
+```
+
+Search across the workspace (substring match; paginated, default 50 / max 200):
+
+```bash
+pensar apps search "billing" --type api-service
+pensar apps search-endpoints "login" --auth-required
+pensar apps search-endpoints "admin" --app <appId> --min-risk 5
+```
+
+**App types** (`--type`): `ui`, `api-service`, `web-application`, `full-stack`,
+`domain`, `subdomain`, `database`, `cloud-resource`, `storage`.
+
+**Endpoint types** (`--type`): `api-endpoint`, `web-endpoint`, `auth-endpoint`,
+`database`, `file-storage`, `asset`.
+
+**Creating/updating data is mutating** — confirm with the user before
+`create`, `update`, `delete`, `endpoint-create`, `endpoint-update`, or
+`endpoint-delete`. Pagination contract: responses include `hasMore`, `limit`,
+`offset`; iterate by incrementing `--offset` by `--limit` until `hasMore` is
+`false`.
+
+### Scan a Project for Vulnerabilities (local)
 
 ```bash
 # Blackbox (just a URL)
 pensar pentest --target <url>
 
-# Whitebox (URL + local source code for deeper analysis)
+# Whitebox (URL + local source code → enables whitebox attack-surface analysis)
 pensar pentest --target <url> --cwd <path>
 ```
+
+Useful pentest flags:
+- `--cwd <path>` — local source for whitebox analysis
+- `--mode exfil` — pivoting & flag extraction (CTF)
+- `--model <model>` — override the AI model (default: auto-selected from provider)
+- `--prompt <text|@file>` — extra guidance (inline or `@filepath`)
+- `--threat-model <text|@file>` — threat model to steer the pentest
+- `--extended-thinking` — enable extended thinking (supported models)
+- `--task-driven` — experimental task-driven architecture
+- `--header "Name: Value"` / `--headers-from <file>` / `--no-global-headers` — HTTP headers
 
 Results stream to the terminal and are saved to:
 - Findings: `~/.pensar/sessions/{id}/findings/`
 - PoC scripts: `~/.pensar/sessions/{id}/pocs/`
 - Report: `~/.pensar/sessions/{id}/pentest-report.md`
 
-### Run a Targeted Test
+The session path is printed as `PENSAR_SESSION_PATH:<path>`.
+
+### Run a Targeted Test (local)
 
 When the user has a specific concern ("test the auth endpoint", "check for
 SQL injection on the search form"):
@@ -97,7 +204,7 @@ SQL injection on the search form"):
 pensar targeted-pentest --target <url> --objective "Test for SQL injection on /api/search"
 ```
 
-Multiple objectives can be specified:
+Multiple objectives (repeat `--objective`, at least one required):
 ```bash
 pensar targeted-pentest --target <url> \
   --objective "Test for authentication bypass" \
@@ -105,42 +212,59 @@ pensar targeted-pentest --target <url> \
 ```
 
 This is more focused than a full scan — the agent tests exactly what you ask.
+Also accepts `--model` and the `--header` / `--headers-from` / `--no-global-headers` flags.
 
-### Interactive Operator Mode
+### Operator Mode (interactive or headless)
 
-For deep-dive security work with real-time control:
+For deep-dive security work with real-time control.
+
+**Headless (scriptable / agent-friendly):**
 ```bash
-pensar operator
+pensar -p "Enumerate the admin panel on https://example.com and report auth weaknesses"
 ```
+Options: `-p/--prompt <text|@file>` (required), `-s/--system <text|@file>`,
+`--target <url>`, `--model`, and the header flags. After the agent finishes it
+prompts for an optional follow-up so you can continue the conversation.
 
-Launches an interactive TUI where you can direct the security agent step by
-step. Supports two modes toggled with `Shift+Tab`:
-- **Default mode** — all tools available (read/write/modify targets)
-- **Plan mode** — read-only, agent observes and plans without taking action
-
-Toggle approval on/off with `Option+Shift+Tab` to require confirmation before
-each tool call.
+**Interactive TUI:**
+```bash
+pensar            # launch the TUI, then run /operator
+```
+In the operator dashboard, press **Shift+Tab** to cycle the mode:
+`approvals-on → approvals-off → plan`.
+- **approvals-on** — every tool call waits for approval (`Y` to approve, `A` to auto-approve from here on)
+- **approvals-off** — tool calls execute automatically
+- **plan** — read-only; the agent reconnoiters and writes a plan without taking action
 
 Best for: targeted investigations, first-time testing, learning, and sensitive
 production environments.
 
-### Manage Projects & Scans via Console API
+### Generate a Threat Model (local)
 
-When authenticated with `pensar auth login`, you can manage projects and scans
-through the CLI:
+Produce an application-centric threat model for the current codebase:
 
 ```bash
-# List all projects in your workspace
-pensar projects
+pensar threat-model                       # writes ./threat-model.md
+pensar threat-model -o docs/threat.md     # custom output path
+pensar threat-model --model <model>
+```
 
-# List scans for a project
-pensar pentests <projectId>
+Runs against the current working directory and writes a Markdown threat model
+you can feed back into a pentest via `--threat-model`.
+
+### Dispatch & Track Console Pentests
+
+When logged in, manage Console-run scans on the active workspace:
+
+```bash
+# List scans in the workspace
+pensar pentests
 
 # Get scan details
 pensar pentests get <pentestId>
 
-# Dispatch a new pentest via Console
-pensar pentests dispatch <projectId> --branch main --level full
+# Dispatch a new pentest (operates on the logged-in workspace)
+pensar pentests dispatch --branch main --level full
 ```
 
 Dispatch options:
@@ -157,13 +281,14 @@ Findings from the last session are in `~/.pensar/sessions/`. Each finding is a
 JSON file in the `findings/` directory. The pentest report at
 `pentest-report.md` has a formatted summary.
 
-**From Console API:**
+**From Console API (workspace-scoped):**
 ```bash
-# List issues for a project
-pensar issues <projectId>
+# List issues in the workspace
+pensar issues
 
-# Filter by severity and status
-pensar issues <projectId> --status open --severity critical
+# Filter by severity, status, scan, or branch
+pensar issues --status open --severity critical
+pensar issues --scan <scanId> --branch main
 
 # Get full details for an issue
 pensar issues get <issueId>
@@ -203,6 +328,9 @@ the explanation with the user, and run tests to verify.
 # Close an issue
 pensar issues update <issueId> --status closed --closed-reason "Patched in v2.1"
 
+# Add comments while updating
+pensar issues update <issueId> --status in-review --closed-comments "Pending review"
+
 # Mark as false positive
 pensar issues update <issueId> --false-positive --fp-reason "Test environment only"
 ```
@@ -223,55 +351,101 @@ pensar logs search <issueId> "SQL injection" --context 5
 Log filters:
 - `--level` — `debug`, `info`, `warn`, `error`
 - `--role` — `assistant`, `user`, `system`, `tool-call`, `tool-result`
-- `--limit <n>` — cap entries (default 100, max 500)
+- `--limit <n>` — cap entries (default 100, max 500), list only
+- `--context <n>` — context lines around matches (default 3), search only
+
+### Manage Global Default HTTP Headers
+
+Headers stored here are snapshotted into new local sessions at create time
+(useful for auth tokens, tenant IDs, etc.):
+
+```bash
+pensar config headers list [--show]        # --show reveals masked secret values
+pensar config headers add "Authorization: Bearer <token>"
+pensar config headers set "X-Tenant-Id: acme"   # overwrite existing
+pensar config headers remove <Name>
+pensar config headers import <file>        # replace all from JSON/Name:Value file
+pensar config headers clear --yes
+```
+
+Existing sessions are not retroactively updated. Per-engagement, prefer the
+`--header` / `--headers-from` flags on `pentest` / `targeted-pentest` /
+`-p` operator instead.
 
 ---
 
 ## CLI Command Reference
 
-### Pentesting
+### Local Engagements
 
 | Command | Description |
 |---------|-------------|
 | `pensar pentest --target <url>` | Autonomous blackbox pentest |
 | `pensar pentest --target <url> --cwd <path>` | Whitebox pentest with source code |
 | `pensar targeted-pentest --target <url> --objective <text>` | Focused test with specific objectives |
-| `pensar operator` | Interactive operator mode (TUI) |
+| `pensar -p <prompt>` | Headless operator session |
+| `pensar` | Launch the interactive TUI (use `/operator`, `/pentest`, …) |
+| `pensar threat-model [-o <path>]` | Generate an application-centric threat model |
 
-Common flags for pentest commands:
-- `--target <url>` — target URL, domain, or IP (required)
-- `--cwd <path>` — path to local source code for whitebox analysis
-- `--model <model>` — AI model to use (default: `claude-sonnet-4-5`)
-- `--mode exfil` — flag extraction mode (CTF)
-- `--objective <text>` — repeatable, for targeted-pentest
+Common flags:
+- `--target <url>` — target URL, domain, or IP (required for pentest/targeted-pentest)
+- `--cwd <path>` — local source for whitebox analysis (pentest)
+- `--model <model>` — AI model (default: auto-selected from configured provider)
+- `--mode exfil` — flag extraction mode, CTF (pentest)
+- `--objective <text>` — repeatable (targeted-pentest, required)
+- `--prompt <text|@file>` / `--threat-model <text|@file>` — guidance (pentest)
+- `--extended-thinking`, `--task-driven` — pentest tuning (experimental)
+- `--header "Name: Value"`, `--headers-from <file>`, `--no-global-headers` — HTTP headers
+- `-p/--prompt <text|@file>` (required), `-s/--system <text|@file>` — operator
 
-### Console API
+### Console / Workspace API (requires `pensar login`)
 
 | Command | Description |
 |---------|-------------|
-| `pensar auth login` | Authenticate with Pensar Console |
-| `pensar auth logout` | Remove stored credentials |
-| `pensar auth status` | Show connection details |
-| `pensar projects` | List workspace projects |
-| `pensar pentests <projectId>` | List scans for a project |
+| `pensar login` | Authenticate with Pensar Console + select workspace |
+| `pensar login status` | Show connection + active workspace |
+| `pensar login logout` | Remove stored credentials |
+| `pensar apps` | List apps (attack surface) in the workspace |
+| `pensar apps get <appId>` | Show app details |
+| `pensar apps create [options]` | Create an app |
+| `pensar apps update <appId> [options]` | Update an app |
+| `pensar apps delete <appId>` | Delete an app |
+| `pensar apps endpoints <appId> [filters]` | List an app's endpoints |
+| `pensar apps endpoint <endpointId>` | Show endpoint details |
+| `pensar apps endpoint-create <appId> [options]` | Create an endpoint |
+| `pensar apps endpoint-update <endpointId> [options]` | Update an endpoint |
+| `pensar apps endpoint-delete <endpointId>` | Delete an endpoint |
+| `pensar apps search <query> [options]` | Substring-search apps |
+| `pensar apps search-endpoints <query> [options]` | Substring-search endpoints |
+| `pensar pentests` | List scans in the workspace |
 | `pensar pentests get <pentestId>` | Get scan details |
-| `pensar pentests dispatch <projectId>` | Dispatch a new pentest |
-| `pensar issues <projectId>` | List issues for a project |
+| `pensar pentests dispatch [--branch <b>] [--level <l>]` | Dispatch a new pentest |
+| `pensar issues [filters]` | List issues in the workspace |
 | `pensar issues get <issueId>` | Get full issue details |
-| `pensar issues update <issueId>` | Update issue status |
+| `pensar issues update <issueId> [options]` | Update issue status |
 | `pensar fixes <issueId>` | List fixes for an issue |
 | `pensar fixes get <fixId>` | Get fix diff and explanation |
-| `pensar logs <issueId>` | List agent logs for an issue |
+| `pensar logs <issueId> [filters]` | List agent logs for an issue |
 | `pensar logs search <issueId> <query>` | Search agent logs |
 
-### Utility
+### Configuration & Utility
 
 | Command | Description |
 |---------|-------------|
+| `pensar config headers ...` | Manage global default HTTP headers |
 | `pensar doctor` | Check dependencies and AI provider config |
 | `pensar upgrade` | Update to the latest version |
 | `pensar version` | Show installed version |
-| `pensar uninstall` | Remove Pensar Apex |
+| `pensar uninstall` | Remove Pensar Apex (keeps sessions, memories, skills) |
+| `pensar help` | Show help |
+
+### Global Flags
+
+- `-h, --help` / `-v, --version`
+- `--log-level <debug\|info\|warn\|error\|silent>` (`--verbose` = debug, `--quiet` = warn)
+- `--obfuscate` (aliases `--redact`, `-O`) — redact hostnames, IPs, UUIDs,
+  emails, paths, tokens, and apparent company names so TUI screenshots are safe
+  to share
 
 ### TUI Slash Commands (Interactive Mode)
 
@@ -279,17 +453,21 @@ When running `pensar` interactively, these slash commands are available:
 
 | Command | Description |
 |---------|-------------|
-| `/pentest` | Start autonomous pentest session |
-| `/operator` | Start guided operator session |
-| `/auth` | Connect to Pensar Console |
+| `/pentest` (`/p`, `/web`) | Start autonomous pentest swarm |
+| `/operator` (`/o`) | Start interactive operator session |
+| `/new` | Start a new operator session |
+| `/plan` | Show current pentest plan |
+| `/threat-model` (`/tm`) | Generate application-centric threat model |
+| `/resume` (`/sessions`, `/s`) | Browse and resume previous sessions |
+| `/login` (`/auth`) | Connect to Pensar Console |
+| `/credits` (`/buy`) | Check credit balance / buy credits |
 | `/models` | View and select AI models |
 | `/providers` | Manage AI provider configs and API keys |
-| `/sessions` | Browse and resume previous sessions |
-| `/credits` | Check credit balance (managed inference) |
-| `/config` | View and modify configuration |
-| `/create-skill` | Create reusable operator skills |
-| `/themes` | Change visual theme |
+| `/obfuscate` (`/redact`) | Toggle screenshot-safe redaction (`on`/`off`/`toggle`) |
+| `/themes` (`/theme`) | Change visual theme |
+| `/skills` | View installed skills |
 | `/help` | Show available commands |
+| `/exit` (`/quit`, `/q`) | Exit the application |
 
 **Always check `pensar --help` and `pensar <command> --help` first for the
 latest flags and commands — the CLI is the source of truth for usage.**
