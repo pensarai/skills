@@ -97,76 +97,29 @@ access to workspace Console data (use `pensar login` for that).
 
 ### Manage the Attack Surface (apps & endpoints)
 
-A primary workspace use case: drive `pensar apps` to inventory and curate the
-attack surface — the **apps** (applications/services) and the **endpoints** that
-belong to them. All output is JSON, so chain commands by extracting IDs.
-Requires `pensar login` first.
+`pensar apps` inventories and edits the workspace attack surface — the **apps**
+(applications/services) and the **endpoints** that belong to them. Requires
+`pensar login`; all output is JSON, so chain commands by extracting IDs.
 
 ```bash
-# List apps in the workspace (paginated JSON: { apps, hasMore, limit, offset })
-pensar apps
-pensar apps --limit 200 --offset 200      # page through; stop when hasMore=false
-
-# Inspect a single app (full detail)
-pensar apps get <appId>
-
-# Create an app (--name and --description required)
-pensar apps create \
-  --name "Billing API" \
-  --description "Customer billing service" \
-  --type api-service \
-  --framework "Express"
-
-# Update an app (only the flags you pass change)
-pensar apps update <appId> --description "Internal billing service"
-
-# Delete an app
-pensar apps delete <appId>
+pensar apps                              # list apps (paginated)
+pensar apps get <appId>                  # app detail
+pensar apps endpoints <appId>            # an app's endpoints
+pensar apps endpoint <endpointId>        # endpoint detail (incl. objectives)
+pensar apps search-endpoints "admin" --min-risk 7
 ```
 
-Work with the endpoints under an app:
+> **For anything beyond reading, use the `pensar-attack-surface` skill.**
+> Consolidating duplicate apps, moving endpoints between apps, rewriting
+> testing objectives and threat models, and adding what recon missed all have
+> ordering and data-loss pitfalls — notably that **deleting an app also deletes
+> its endpoints**, and that `--objective` replaces the list rather than
+> appending. That skill covers those workflows in full.
 
-```bash
-# List endpoints for an app (lean shape; paginated)
-pensar apps endpoints <appId>
-pensar apps endpoints <appId> --type api-endpoint --min-risk 7   # filter
+Creating, updating, and deleting are **mutating** — confirm with the user
+first. Pagination contract: responses include `hasMore`, `limit`, `offset`;
+iterate by incrementing `--offset` by `--limit` until `hasMore` is `false`.
 
-# Full detail for one endpoint (objectives, auth, risk breakdown, threat model)
-pensar apps endpoint <endpointId>
-
-# Create an endpoint (--endpoint and --description required)
-pensar apps endpoint-create <appId> \
-  --endpoint "/api/invoices/:id" \
-  --description "Fetch an invoice" \
-  --type api-endpoint \
-  --auth-required \
-  --objective "Test for IDOR on invoice id" \
-  --objective "Check auth bypass"
-
-# Update / delete an endpoint
-pensar apps endpoint-update <endpointId> --business-logic "Tenant-scoped"
-pensar apps endpoint-delete <endpointId>
-```
-
-Search across the workspace (substring match; paginated, default 50 / max 200):
-
-```bash
-pensar apps search "billing" --type api-service
-pensar apps search-endpoints "login" --auth-required
-pensar apps search-endpoints "admin" --app <appId> --min-risk 5
-```
-
-**App types** (`--type`): `ui`, `api-service`, `web-application`, `full-stack`,
-`domain`, `subdomain`, `database`, `cloud-resource`, `storage`.
-
-**Endpoint types** (`--type`): `api-endpoint`, `web-endpoint`, `auth-endpoint`,
-`database`, `file-storage`, `asset`.
-
-**Creating/updating data is mutating** — confirm with the user before
-`create`, `update`, `delete`, `endpoint-create`, `endpoint-update`, or
-`endpoint-delete`. Pagination contract: responses include `hasMore`, `limit`,
-`offset`; iterate by incrementing `--offset` by `--limit` until `hasMore` is
-`false`.
 
 ### Scan a Project for Vulnerabilities (local)
 
@@ -293,6 +246,8 @@ pensar issues --scan <scanId> --branch main
 # Get full details for an issue
 pensar issues get <issueId>
 ```
+
+`<issueId>` accepts the issue UUID or its label (e.g. `VULN-000123`).
 
 Filter options for `pensar issues`:
 - `--status` — `open`, `closed`, `false-positive`, `in-review`
@@ -423,10 +378,16 @@ Common flags:
 | `pensar issues [filters]` | List issues in the workspace |
 | `pensar issues get <issueId>` | Get full issue details |
 | `pensar issues update <issueId> [options]` | Update issue status |
+| `pensar issues retest <issueId>` | Re-run the test that produced an issue |
+| `pensar issues link-pr <issueId> --url <url>` | Link an externally opened PR to an issue |
+| `pensar issues prs <issueId>` | List pull requests linked to an issue |
 | `pensar fixes <issueId>` | List fixes for an issue |
 | `pensar fixes get <fixId>` | Get fix diff and explanation |
 | `pensar logs <issueId> [filters]` | List agent logs for an issue |
 | `pensar logs search <issueId> <query>` | Search agent logs |
+| `pensar targets <pentestId>` | List the targets (endpoints) a pentest exercised |
+| `pensar targets logs <targetId> [filters]` | Agent logs for a target, incl. runs that found nothing |
+| `pensar targets search <targetId> <query>` | Search a target's agent logs |
 
 ### Configuration & Utility
 
