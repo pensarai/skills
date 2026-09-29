@@ -9,7 +9,7 @@ description: >-
   their workspace, applications, endpoints, or scan objectives before a pentest.
 metadata:
   author: pensarai
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Curating the Pensar Attack Surface
@@ -74,8 +74,15 @@ There is no `--workspace` flag. **Always run `pensar login status` first** and
 tell the user which workspace you are about to modify — editing the wrong
 workspace is the most common serious mistake.
 
-All Console commands print JSON to stdout, so pipe them through `jq` and chain
-IDs between calls.
+Check `pensar --version` and `pensar apps --help` before choosing commands.
+An older executable on PATH may lack attack-surface commands; verify the
+actual binary or source checkout used by every step. Do not silently switch
+CLI versions halfway through a batch.
+
+Data commands emit JSON; login status may be text. Parse and validate every
+response. If large piped responses are truncated, capture stdout to a regular
+temporary file and parse it after successful process exit. Never treat invalid
+or partial JSON as an empty result.
 
 ## Working Rules
 
@@ -85,7 +92,9 @@ Apply these to every task in this skill:
   then present a plan. Never mutate on the first command.
 - **Confirm every destructive or bulk change** with the user before running
   it — `delete`, `endpoint-delete`, reparenting, and anything touching more
-  than a couple of records. Show what will change and what it affects.
+  than a couple of records. Prepare the concrete manifest and preview first.
+  Existing explicit approval covers that scope; do not ask again for each
+  record or a safe resume of the same batch.
 - **Objectives are not in list output.** `apps endpoints` and
   `apps search-endpoints` omit `objectives` to keep responses small. You must
   `pensar apps endpoint <endpointId>` to read them. Never conclude "this
@@ -95,10 +104,20 @@ Apply these to every task in this skill:
 - **`--objective` replaces, it does not append.** Passing objectives on an
   update overwrites the whole list. To add one, read the current list first
   and re-send all of them.
-- **Risk scores are read-only.** `riskScore` is computed by Pensar's agents
-  from exposure, data sensitivity, function criticality, and security
-  indicators. You cannot set it; you influence it by improving descriptions,
-  auth details, and business logic.
+- **Risk scores are read-only through the curation CLI.** Agents compute
+  them from exposure, data sensitivity, function criticality and security
+  indicators. Metadata updates do not themselves trigger scoring; manually
+  created endpoints can remain unscored. Better context helps when a scoring
+  workflow actually runs. Report null scores separately from zero, and verify
+  target inclusion before a scan: minimum-risk filters can exclude unscored
+  records. Do not invent a score flag or perform an unrequested backend write.
+- **Bulk changes need a recoverable batch.** Use an explicit field allowlist,
+  before/after manifest, fresh backup, preflight, durable journal and per-write
+  readback. See [bulk updates and recovery](references/bulk-updates.md).
+- **Source coverage and context quality are separate checks.** Confirm routes
+  against registered source paths, then trace behavior and permissions. Read
+  [source-grounded context](references/source-grounded-context.md) when source
+  is available; route counts and valid citations alone do not prove accuracy.
 - **Page through everything.** List responses are
   `{ ..., hasMore, limit, offset }`. Increment `--offset` by `--limit` until
   `hasMore` is `false`. Default page is 100 (max 200) for lists, 50 (max 200)
@@ -125,7 +144,8 @@ pensar apps endpoint <endpointId>
 ```
 
 Build an inventory, then report it grouped by application with endpoint count
-and highest risk score. While reading, flag the four problems worth fixing:
+and highest risk score, including the count of unscored records. While reading,
+flag the four problems worth fixing:
 
 | Symptom | What it means | Workflow |
 |---|---|---|
@@ -150,7 +170,7 @@ Both are substring matches scoped to the workspace.
 
 ## Workflow 2 — Consolidate Duplicate Applications
 
-**The most common cleanup, and the only one that can destroy data.** Recon
+**Consolidation can destroy data when duplicates are deleted.** Recon
 routinely represents one service as several apps (staging vs prod hostnames, a
 CDN alias, an IP and its DNS name).
 
@@ -186,13 +206,10 @@ description and the linked domain.
 pensar apps endpoint-update <endpointId> --app <survivorAppId>
 ```
 
-To move a whole app's worth:
-
-```bash
-for id in $(pensar apps endpoints <dupId> --limit 200 | jq -r '.endpoints[].id'); do
-  pensar apps endpoint-update "$id" --app <survivorAppId>
-done
-```
+For a whole application, first collect **every page** of endpoint IDs into
+an immutable manifest, inspect collisions, and use the
+[bulk workflow](references/bulk-updates.md). Do not mutate an application while
+paginating its shrinking endpoint list: offset pagination can skip records.
 
 **Expect collisions.** Endpoint identity is unique on **(path, transport)
 within an app**. Moving `/health` onto an app that already has `/health` over
@@ -200,8 +217,8 @@ the same transport returns **409**:
 
 > An endpoint with this path and transport already exists in the application.
 
-That is a genuine duplicate — the whole point of consolidating. Handle it by
-merging the two records rather than forcing the move: read both
+That is an identity collision, not proof the records describe identical
+behavior. Compare methods, auth and context before proposing a merge: read both
 (`apps endpoint <id>`), fold any objectives, business logic, or auth details
 the survivor's copy is missing into it with `endpoint-update`, then delete the
 leftover with `endpoint-delete`. Never resolve a 409 by renaming the path to
@@ -263,6 +280,13 @@ Read the current state first — objectives only appear on detail:
 pensar apps endpoint <endpointId> | jq '{endpoint, objectives, businessLogic, threatModel, authenticationRequired}'
 ```
 
+Before rewriting, trace the handler/page, authorization dependency and service
+behavior. Preserve useful existing details. Each record should explain its
+actors, inputs, ownership/capability boundaries, state changes and side effects;
+objectives should specify fixtures, actions, controls and observable outcomes.
+Use [source-grounded context](references/source-grounded-context.md) for the
+review checklist. Prefer relevant specificity over a word-count target.
+
 Then rewrite. **Every `--objective` you pass replaces the entire list**, so
 send the full intended set in one call:
 
@@ -292,7 +316,7 @@ The three free-text fields work together, and all three reach the agent:
 | `--threat-model` | What would hurt | The consequence worth preventing |
 
 Also correct auth metadata while you are here — it changes how the agent
-approaches the endpoint and feeds the risk score:
+approaches the endpoint and provides evidence for a future scoring pass:
 
 ```bash
 pensar apps endpoint-update <endpointId> \
@@ -361,9 +385,16 @@ doubt just try one and read the error.
 - `--type` on endpoints: `api-endpoint`, `web-endpoint`, `auth-endpoint`,
   `database`, `file-storage`, `asset`
 
-A good agent workflow here: read the repo's routing files, diff the routes you
-find against `pensar apps endpoints <appId>`, and propose the missing ones as a
-batch for the user to approve.
+Reconcile registered routes, router mount prefixes and client API base URLs
+against a fully paginated workspace inventory. Search all applications before
+calling a route missing: it may be misfiled. Report method/path registrations
+separately from platform records, whose identity is path plus transport within
+an application. Preserve method-specific behavior in the metadata.
+
+Separate rendered frontend pages, API handlers, public widgets, redirects,
+layout-only routes and retired routes. A supplied archive is not proof of what
+is deployed. Defer uncertain additions/deletions and domain linking unless
+included in the user's scope; rerunning recon is not a guaranteed repair.
 
 ---
 
@@ -386,7 +417,11 @@ deletion is unrecoverable, a stale record is merely noise.
 
 ## After Curating: Verify and Scan
 
-Re-audit, then hand off to a pentest:
+Re-read affected endpoint details and compare the full inventory with the
+backup. Verify changed fields, preserved fields, IDs, ownership and domain
+links; report partial completion honestly. Check unscored target inclusion.
+A successful curation batch does not authorize a scan. Once scan execution is
+authorized, hand off to a pentest:
 
 ```bash
 pensar apps --limit 200
