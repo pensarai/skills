@@ -92,7 +92,8 @@ Apply these to every task in this skill:
   then present a plan. Never mutate on the first command.
 - **Confirm every destructive or bulk change** with the user before running
   it — `delete`, `endpoint-delete`, reparenting, and anything touching more
-  than a couple of records. Prepare the concrete manifest and preview first.
+  than a couple of records. Prepare a concrete change list and before/after
+  preview first; use a manifest for scripted batches.
   Existing explicit approval covers that scope; do not ask again for each
   record or a safe resume of the same batch.
 - **Objectives are not in list output.** `apps endpoints` and
@@ -111,9 +112,17 @@ Apply these to every task in this skill:
   workflow actually runs. Report null scores separately from zero, and verify
   target inclusion before a scan: minimum-risk filters can exclude unscored
   records. Do not invent a score flag or perform an unrequested backend write.
-- **Bulk changes need a recoverable batch.** Use an explicit field allowlist,
-  before/after manifest, fresh backup, preflight, durable journal and per-write
-  readback. See [bulk updates and recovery](references/bulk-updates.md).
+- **Choose the working style once.** If the user has not expressed a preference,
+  ask whether they want a reviewable batch script or incremental edits as the
+  analysis develops. Recommend scripts for large/repetitive changes and
+  incremental edits for a few exploratory corrections. Continue read-only
+  analysis while awaiting the choice; do not treat this as another approval
+  gate or ask again when the preference is already clear.
+- **Keep either workflow recoverable.** Use an explicit field scope, before/after
+  record, backups on by default, preflight and per-write readback. Bulk scripts
+  also need a durable operation journal and resume support. Allow an explicit
+  backup opt-out without weakening the other checks. See
+  [execution styles, backups and recovery](references/bulk-updates.md).
 - **Source coverage and context quality are separate checks.** Confirm routes
   against registered source paths, then trace behavior and permissions. Read
   [source-grounded context](references/source-grounded-context.md) when source
@@ -207,8 +216,9 @@ pensar apps endpoint-update <endpointId> --app <survivorAppId>
 ```
 
 For a whole application, first collect **every page** of endpoint IDs into
-an immutable manifest, inspect collisions, and use the
-[bulk workflow](references/bulk-updates.md). Do not mutate an application while
+a fixed inventory, inspect collisions, and use the
+[bulk workflow](references/bulk-updates.md). For scripted batches, capture that
+inventory in an immutable manifest. Do not mutate an application while
 paginating its shrinking endpoint list: offset pagination can skip records.
 
 **Expect collisions.** Endpoint identity is unique on **(path, transport)
@@ -418,7 +428,8 @@ deletion is unrecoverable, a stale record is merely noise.
 ## After Curating: Verify and Scan
 
 Re-read affected endpoint details and compare the full inventory with the
-backup. Verify changed fields, preserved fields, IDs, ownership and domain
+preflight baseline (and backup, when enabled). Verify changed fields, preserved
+fields, IDs, ownership and domain
 links; report partial completion honestly. Check unscored target inclusion.
 A successful curation batch does not authorize a scan. Once scan execution is
 authorized, hand off to a pentest:
