@@ -9,7 +9,7 @@ description: >-
   workspace, applications, endpoints, or scan objectives before a pentest.
 metadata:
   author: pensarai
-  version: "1.1"
+  version: "1.2"
 ---
 
 # Curating the Pensar Attack Surface
@@ -38,6 +38,11 @@ workspace you are about to change.
 - **Read fully before writing.** Page through every list until there are no
   more results. Objectives and other detail fields are often missing from list
   responses; read the endpoint detail before concluding anything is empty.
+- **Ground it in source when you have it.** Trace the handler, its actual
+  authorization checks and side effects, and search all apps before calling a
+  route missing. Valid file citations are not proof the description is right.
+  Source is not proof of what is deployed, and failed recon is not proof a
+  route is absent; keep uncertain items flagged rather than added or deleted.
 - **Know the write semantics.** Updates are usually sparse, but where an
   objective list is sent it typically replaces the whole list: read the
   current objectives and send the full intended set. Endpoints belong to one
@@ -47,10 +52,25 @@ workspace you are about to change.
 - **Deleting an app deletes its endpoints.** Consolidate by keeping one app,
   moving endpoints over, confirming the duplicates are empty, then deleting.
   Snapshot endpoint IDs first rather than paging a list that is shrinking.
-- **Confirm bulk or destructive changes** with the user before running them.
+- **Review scope once.** Show the concrete change list for bulk or destructive
+  work and get approval. That approval covers the reviewed scope and a safe
+  resume; don't re-ask per record. New scope needs a new review.
+- **Script or incremental.** If the user hasn't said, ask once whether they
+  want a reviewable batch script (good for large or repetitive changes) or
+  incremental edits (good for a few exploratory fixes). Keep reading meanwhile.
+- **Backups on by default.** Export the affected records, objectives included,
+  before the first write, and stop if that export fails. The user can opt out
+  explicitly; never opt out on their behalf. Any `--no-backup` style switch
+  belongs to a script you write, not to Pensar. A backup helps recovery but is
+  not a rollback: recreated records get new IDs.
+- **Watch for drift and verify.** Recheck old values before writing, read each
+  change back, and stop on anything unexpected. Writes are not atomic, so on a
+  stop report what landed, what didn't and what is uncertain, and resume from
+  that rather than blindly retrying creates.
 - **Risk scores are computed, not curated.** The known curation CLI cannot
   set them; check what your interface supports. Metadata edits alone do not
-  trigger scoring.
+  trigger scoring. Report unscored separately from zero, and note that risk
+  filters can exclude unscored endpoints from a scan.
 - **No automatic pentest.** Curation does not authorize a scan. Dispatch only
   when the user asks; it costs real compute.
 
