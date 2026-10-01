@@ -47,8 +47,8 @@ workspace you are about to change.
   objective list is sent it typically replaces the whole list: read the
   current objectives and send the full intended set. Endpoints belong to one
   app, and identity is path plus transport within that app, so moves can
-  collide. A collision is not proof two records behave the same; merge their
-  context, never rename to a fake path.
+  collide. A collision is not proof two records behave the same; compare them
+  before merging any context, and never rename to a fake path.
 - **Deleting an app deletes its endpoints.** Consolidate by keeping one app,
   moving endpoints over, confirming the duplicates are empty, then deleting.
   Snapshot endpoint IDs first rather than paging a list that is shrinking.
@@ -67,9 +67,10 @@ workspace you are about to change.
   change back, and stop on anything unexpected. Writes are not atomic, so on a
   stop report what landed, what didn't and what is uncertain, and resume from
   that rather than blindly retrying creates.
-- **Risk scores are read-only** and are not recomputed just because metadata
-  changed. Report unscored separately from zero, and note that risk filters can
-  exclude unscored endpoints from a scan.
+- **Risk scores are computed, not curated.** The known curation CLI cannot
+  set them; check what your interface supports. Metadata edits alone do not
+  trigger scoring. Report unscored separately from zero, and note that risk
+  filters can exclude unscored endpoints from a scan.
 - **No automatic pentest.** Curation does not authorize a scan. Dispatch only
   when the user asks; it costs real compute.
 
