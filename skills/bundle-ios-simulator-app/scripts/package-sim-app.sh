@@ -194,7 +194,7 @@ EOF
 if [[ $SMOKE_TEST -eq 1 ]]; then
   DEVICE="$(xcrun simctl list devices booted | grep -Eo '[0-9A-F-]{36}' | head -1 || true)"
   if [[ -z "$DEVICE" ]]; then
-    DEVICE="$(xcrun simctl list devices available | grep -E '^\s+iPhone' | grep -Eo '[0-9A-F-]{36}' | head -1 || true)"
+    DEVICE="$(xcrun simctl list devices available | grep -E '^[[:space:]]+iPhone' | grep -Eo '[0-9A-F-]{36}' | head -1 || true)"
     [[ -n "$DEVICE" ]] || fail "no available iPhone simulator for the smoke test (create one in Xcode > Settings > Components)"
     log "booting simulator $DEVICE"
     xcrun simctl boot "$DEVICE"
