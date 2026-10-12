@@ -18,6 +18,7 @@ This repository contains skills built by [Pensar](https://pensar.dev) for use wi
 | [pensar-security](skills/pensar-security/) | Security testing and penetration testing with the Pensar Apex CLI — autonomous scanning, targeted tests, operator mode, attack-surface management (apps & endpoints), and Console workspace operations |
 | [dockerize-app](skills/dockerize-app/) | Dockerize an application with docker-compose, including all services, databases, data seeding, and AGENTS.md documentation |
 | [repository-threat-model](skills/repository-threat-model/) | Analyze a repository's architecture and codebase to produce a STRIDE-based threat model in `.pensar/THREAT_MODEL.md` |
+| [bundle-ios-simulator-app](skills/bundle-ios-simulator-app/) | Build an iOS Simulator .app from any iOS project (native, React Native, Expo, Flutter, Capacitor) and package it with a checksum, manifest, and run instructions to share for testing |
 
 ## Repository Structure
 
